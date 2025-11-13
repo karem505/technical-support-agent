@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import {
   LiveKitRoom,
   RoomAudioRenderer,
@@ -8,9 +8,12 @@ import {
   useVoiceAssistant,
   BarVisualizer,
   VoiceAssistantControlBar,
+  useLocalParticipant,
+  useRoomContext,
 } from '@livekit/components-react';
+import { Track } from 'livekit-client';
 import { toast } from 'sonner';
-import { Mic, MicOff, Phone, PhoneOff } from 'lucide-react';
+import { Mic, MicOff, Phone, PhoneOff, MonitorUp, MonitorX } from 'lucide-react';
 
 interface VoiceAgentProps {
   onConnectionChange?: (connected: boolean) => void;
@@ -121,7 +124,7 @@ export function VoiceAgent({ onConnectionChange }: VoiceAgentProps) {
       serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL}
       connect={true}
       audio={true}
-      video={false}
+      video={true}
       onDisconnected={disconnect}
       className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8"
     >
@@ -129,6 +132,7 @@ export function VoiceAgent({ onConnectionChange }: VoiceAgentProps) {
         <div className="w-full max-w-md">
           <VoiceAssistantUI />
         </div>
+        <ScreenShareControls />
         <VoiceAssistantControlBar />
         <button
           onClick={disconnect}
@@ -141,6 +145,132 @@ export function VoiceAgent({ onConnectionChange }: VoiceAgentProps) {
       <RoomAudioRenderer />
       <StartAudio label="Click to enable audio" />
     </LiveKitRoom>
+  );
+}
+
+function ScreenShareControls() {
+  const [isSharing, setIsSharing] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const { localParticipant } = useLocalParticipant();
+  const room = useRoomContext();
+
+  const startScreenShare = async () => {
+    if (!room || !localParticipant) {
+      toast.error('Not connected to room');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      // Request screen sharing permission
+      await localParticipant.setScreenShareEnabled(true, {
+        audio: false,
+        contentHint: 'detail',
+        resolution: {
+          width: 1920,
+          height: 1080,
+          frameRate: 5, // 5 fps for screen sharing
+        },
+      });
+
+      setIsSharing(true);
+      toast.success('Screen sharing started');
+    } catch (error) {
+      console.error('Error starting screen share:', error);
+      toast.error('Failed to start screen sharing');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const stopScreenShare = async () => {
+    if (!localParticipant) {
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      await localParticipant.setScreenShareEnabled(false);
+      setIsSharing(false);
+      toast.info('Screen sharing stopped');
+    } catch (error) {
+      console.error('Error stopping screen share:', error);
+      toast.error('Failed to stop screen sharing');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Listen for screen share track changes
+  useEffect(() => {
+    if (!localParticipant) return;
+
+    const updateSharingState = () => {
+      const isCurrentlySharing = localParticipant.isCameraEnabled ||
+        Array.from(localParticipant.videoTrackPublications.values()).some(
+          pub => pub.source === Track.Source.ScreenShare
+        );
+      setIsSharing(isCurrentlySharing);
+    };
+
+    updateSharingState();
+
+    // Subscribe to track publications
+    localParticipant.on('trackPublished', updateSharingState);
+    localParticipant.on('trackUnpublished', updateSharingState);
+
+    return () => {
+      localParticipant.off('trackPublished', updateSharingState);
+      localParticipant.off('trackUnpublished', updateSharingState);
+    };
+  }, [localParticipant]);
+
+  return (
+    <div className="flex items-center space-x-3">
+      {!isSharing ? (
+        <button
+          onClick={startScreenShare}
+          disabled={isLoading}
+          className="px-6 py-3 bg-blue-500 text-white rounded-lg font-semibold hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+        >
+          {isLoading ? (
+            <>
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              <span>Starting...</span>
+            </>
+          ) : (
+            <>
+              <MonitorUp className="w-5 h-5" />
+              <span>Share Screen</span>
+            </>
+          )}
+        </button>
+      ) : (
+        <button
+          onClick={stopScreenShare}
+          disabled={isLoading}
+          className="px-6 py-3 bg-orange-500 text-white rounded-lg font-semibold hover:bg-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2 animate-pulse"
+        >
+          {isLoading ? (
+            <>
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              <span>Stopping...</span>
+            </>
+          ) : (
+            <>
+              <MonitorX className="w-5 h-5" />
+              <span>Stop Sharing</span>
+            </>
+          )}
+        </button>
+      )}
+      {isSharing && (
+        <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+          <span className="w-2 h-2 bg-blue-500 rounded-full mr-2 animate-pulse"></span>
+          Screen Sharing Active
+        </span>
+      )}
+    </div>
   );
 }
 

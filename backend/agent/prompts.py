@@ -39,4 +39,6 @@ SYSTEM_PROMPT = """You are an expert Odoo Technical Support Agent. Your role is 
 
 Always be helpful, professional, and prioritize the user's data security."""
 
-GREETING_PROMPT = "Hello! I'm your Odoo Technical Support Agent. I can help you with any Odoo-related technical issues. What can I assist you with today?"
+GREETING_PROMPT = "Hello! I'm your Odoo Technical Support Agent. I can help you with any Odoo-related technical issues. You can share your screen with me if you need help with something visual. What can I assist you with today?"
+
+VISION_PROMPT = "I can see your screen now. Let me analyze what's shown and help you with any issues I notice."

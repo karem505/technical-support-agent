@@ -1,8 +1,10 @@
 # Core dependencies
 livekit==0.17.5
-livekit-agents==0.10.2
+livekit-agents[images]==0.10.2
 livekit-plugins-openai==0.9.2
+livekit-plugins-google==0.8.0
 livekit-plugins-silero==0.7.2
+livekit-plugins-noise-cancellation==0.2.0
 
 # FastAPI for API server
 fastapi==0.115.5
