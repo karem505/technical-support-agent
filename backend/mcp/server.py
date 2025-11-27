@@ -2,6 +2,7 @@
 MCP Server implementation for Odoo
 """
 import asyncio
+import json
 import logging
 from typing import Any
 from mcp.server import Server
@@ -149,10 +150,13 @@ def create_mcp_server() -> Server:
             else:
                 result = {"error": f"Unknown tool: {name}"}
 
+            # Use JSON serialization to preserve structure
+            if isinstance(result, (dict, list)):
+                return [TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
             return [TextContent(type="text", text=str(result))]
         except Exception as e:
             logger.error(f"Error calling tool {name}: {e}")
-            return [TextContent(type="text", text=f"Error: {str(e)}")]
+            return [TextContent(type="text", text=json.dumps({"error": str(e)}))]
 
     return server
 

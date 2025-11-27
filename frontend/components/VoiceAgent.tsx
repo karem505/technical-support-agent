@@ -8,9 +8,10 @@ import {
   useVoiceAssistant,
   BarVisualizer,
   VoiceAssistantControlBar,
+  useLocalParticipant,
 } from '@livekit/components-react';
 import { toast } from 'sonner';
-import { Mic, MicOff, Phone, PhoneOff } from 'lucide-react';
+import { Mic, MicOff, Phone, PhoneOff, Monitor, MonitorOff } from 'lucide-react';
 
 interface VoiceAgentProps {
   onConnectionChange?: (connected: boolean) => void;
@@ -62,11 +63,21 @@ export function VoiceAgent({ onConnectionChange }: VoiceAgentProps) {
         throw new Error('Failed to get token');
       }
 
-      const data = await tokenResponse.json();
+      // Handle JSON parsing with error handling
+      let data;
+      try {
+        data = await tokenResponse.json();
+      } catch (parseError) {
+        throw new Error('Invalid response from server');
+      }
+
+      if (!data.token) {
+        throw new Error('No token received from server');
+      }
+
       setToken(data.token);
-      setConnected(true);
-      onConnectionChange?.(true);
-      toast.success('Connected to support agent');
+      // Note: connected state will be set in onConnected callback
+      toast.success('Connecting to support agent...');
     } catch (error) {
       console.error('Error connecting:', error);
       toast.error('Failed to connect to agent');
@@ -115,6 +126,12 @@ export function VoiceAgent({ onConnectionChange }: VoiceAgentProps) {
     );
   }
 
+  const handleConnected = () => {
+    setConnected(true);
+    onConnectionChange?.(true);
+    toast.success('Connected to support agent');
+  };
+
   return (
     <LiveKitRoom
       token={token}
@@ -122,6 +139,7 @@ export function VoiceAgent({ onConnectionChange }: VoiceAgentProps) {
       connect={true}
       audio={true}
       video={false}
+      onConnected={handleConnected}
       onDisconnected={disconnect}
       className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8"
     >
@@ -146,6 +164,27 @@ export function VoiceAgent({ onConnectionChange }: VoiceAgentProps) {
 
 function VoiceAssistantUI() {
   const { state, audioTrack } = useVoiceAssistant();
+  const { localParticipant } = useLocalParticipant();
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+
+  const toggleScreenShare = async () => {
+    if (!localParticipant) return;
+
+    try {
+      if (isScreenSharing) {
+        await localParticipant.setScreenShareEnabled(false);
+        setIsScreenSharing(false);
+        toast.info('Screen sharing stopped');
+      } else {
+        await localParticipant.setScreenShareEnabled(true);
+        setIsScreenSharing(true);
+        toast.success('Screen sharing started - Agent can now see your screen');
+      }
+    } catch (error) {
+      console.error('Screen share error:', error);
+      toast.error('Failed to toggle screen sharing');
+    }
+  };
 
   return (
     <div className="flex flex-col items-center space-y-4">
@@ -179,6 +218,33 @@ function VoiceAssistantUI() {
           {state === 'idle' && 'Speak to ask a question'}
         </p>
       </div>
+
+      {/* Screen Share Button */}
+      <button
+        onClick={toggleScreenShare}
+        className={`px-4 py-2 rounded-lg font-medium flex items-center space-x-2 transition-colors ${
+          isScreenSharing
+            ? 'bg-green-500 text-white hover:bg-green-600'
+            : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'
+        }`}
+      >
+        {isScreenSharing ? (
+          <>
+            <MonitorOff className="w-5 h-5" />
+            <span>Stop Sharing</span>
+          </>
+        ) : (
+          <>
+            <Monitor className="w-5 h-5" />
+            <span>Share Screen</span>
+          </>
+        )}
+      </button>
+      {isScreenSharing && (
+        <p className="text-xs text-green-600 dark:text-green-400">
+          Agent can see your screen
+        </p>
+      )}
     </div>
   );
 }

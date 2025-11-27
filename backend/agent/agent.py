@@ -1,75 +1,107 @@
 """
-Main Odoo Support Agent using LiveKit
+Main Odoo Support Agent using LiveKit with Vision Support
 """
 import os
 import logging
-from livekit import agents, rtc
-from livekit.agents import JobContext, WorkerOptions, cli, llm
-from livekit.plugins import openai, silero
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load .env from project root
+env_path = Path(__file__).resolve().parent.parent.parent / ".env"
+load_dotenv(env_path)
+
+from livekit.agents import (
+    Agent,
+    AgentSession,
+    JobContext,
+    WorkerOptions,
+    cli,
+    room_io,
+)
+from livekit.plugins import google, silero
 
 from .prompts import SYSTEM_PROMPT, GREETING_PROMPT
-from .tools import OdooTools
+from .tools import (
+    check_odoo_status,
+    get_installed_modules,
+    install_module,
+    update_module,
+    get_user_info,
+    create_user,
+    reset_user_password,
+    get_server_logs,
+    analyze_error,
+)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-class OdooSupportAgent:
-    """Odoo Technical Support Voice Agent"""
+class OdooSupportAgent(Agent):
+    """Odoo Technical Support Voice Agent with Vision"""
 
     def __init__(self):
-        self.tools = OdooTools()
-
-    async def entrypoint(self, ctx: JobContext):
-        """Main entrypoint for the agent"""
-        logger.info(f"Starting Odoo Support Agent for room: {ctx.room.name}")
-
-        # Connect to the room
-        await ctx.connect()
-
-        # Wait for the first participant to join
-        participant = await ctx.wait_for_participant()
-        logger.info(f"Participant joined: {participant.identity}")
-
-        # Create the agent with OpenAI Realtime API
-        agent = agents.Agent(
+        super().__init__(
             instructions=SYSTEM_PROMPT,
-            model=openai.realtime.RealtimeModel(
-                voice="alloy",
-                temperature=0.7,
-                instructions=SYSTEM_PROMPT,
-            ),
-            # Add Odoo tools
             tools=[
-                self.tools.check_odoo_status,
-                self.tools.get_installed_modules,
-                self.tools.install_module,
-                self.tools.update_module,
-                self.tools.get_user_info,
-                self.tools.create_user,
-                self.tools.reset_user_password,
-                self.tools.get_server_logs,
-                self.tools.analyze_error,
+                check_odoo_status,
+                get_installed_modules,
+                install_module,
+                update_module,
+                get_user_info,
+                create_user,
+                reset_user_password,
+                get_server_logs,
+                analyze_error,
             ],
         )
 
-        # Start the agent
-        agent.start(ctx.room, participant)
 
-        # Send initial greeting
-        await agent.say(GREETING_PROMPT, allow_interruptions=True)
+async def entrypoint(ctx: JobContext):
+    """Main entrypoint for the agent"""
+    logger.info(f"Starting Odoo Support Agent for room: {ctx.room.name}")
 
-        logger.info("Agent started successfully")
+    # Connect to the room
+    await ctx.connect()
+
+    # Create the AgentSession with Google Gemini Live API
+    # Native speech-to-speech with real-time video support at 1 FPS
+    # Egyptian Arabic is configured via system prompt (language param not supported)
+    session = AgentSession(
+        llm=google.realtime.RealtimeModel(
+            model="gemini-2.0-flash-exp",
+            voice="Kore",  # Options: Puck, Charon, Kore, Fenrir, Aoede
+            temperature=0.7,
+            instructions=SYSTEM_PROMPT,
+        ),
+        vad=silero.VAD.load(),
+    )
+
+    # Create the agent instance
+    agent = OdooSupportAgent()
+
+    # Start the session with video input enabled for screen sharing
+    await session.start(
+        room=ctx.room,
+        agent=agent,
+        room_options=room_io.RoomOptions(
+            video_input=True,  # Enable screen share/camera input
+        ),
+    )
+
+    logger.info("Agent session started successfully with vision support")
+
+    # Send initial greeting
+    await session.generate_reply(
+        instructions=GREETING_PROMPT
+    )
 
 
 def run_agent():
     """Run the agent worker"""
-    agent_instance = OdooSupportAgent()
-
     cli.run_app(
         WorkerOptions(
-            entrypoint_fnc=agent_instance.entrypoint,
-            worker_type=agents.WorkerType.ROOM,
+            entrypoint_fnc=entrypoint,
         ),
     )
 

@@ -3,6 +3,12 @@ FastAPI server for the Odoo Support Agent
 """
 import os
 import logging
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load .env from project root (parent of backend directory)
+env_path = Path(__file__).resolve().parent.parent.parent / ".env"
+load_dotenv(env_path)
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -18,9 +24,11 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Odoo Technical Support Agent API")
 
 # Configure CORS
+# Get allowed origins from environment, default to localhost for development
+allowed_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify your frontend domain
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -80,6 +88,7 @@ async def create_token(request: ConnectionRequest):
                 room_join=True,
                 room=request.room_name,
                 can_publish=True,
+                can_publish_sources=["microphone", "camera", "screen_share", "screen_share_audio"],
                 can_subscribe=True,
             )
         )
@@ -112,28 +121,31 @@ async def create_room(request: ConnectionRequest):
                 detail="LiveKit credentials not configured"
             )
 
-        # Create room API client
-        room_service = api.RoomService(
+        # Create LiveKit API client (new SDK syntax)
+        lkapi = api.LiveKitAPI(
             livekit_url,
-            livekit_api_key,
-            livekit_api_secret
+            api_key=livekit_api_key,
+            api_secret=livekit_api_secret
         )
 
-        # Create the room
-        room = await room_service.create_room(
-            api.CreateRoomRequest(
-                name=request.room_name,
-                empty_timeout=300,  # 5 minutes
-                max_participants=2,  # User + Agent
+        try:
+            # Create the room using the new API
+            room = await lkapi.room.create_room(
+                api.CreateRoomRequest(
+                    name=request.room_name,
+                    empty_timeout=300,  # 5 minutes
+                    max_participants=2,  # User + Agent
+                )
             )
-        )
 
-        logger.info(f"Created room: {room.name}")
+            logger.info(f"Created room: {room.name}")
 
-        return {
-            "room_name": room.name,
-            "sid": room.sid,
-        }
+            return {
+                "room_name": room.name,
+                "sid": room.sid,
+            }
+        finally:
+            await lkapi.aclose()
 
     except Exception as e:
         logger.error(f"Error creating room: {e}")

@@ -3,10 +3,19 @@ Odoo-specific MCP tools
 """
 import os
 import logging
+import asyncio
 from typing import Any, Dict, List
 import odoorpc
 
 logger = logging.getLogger(__name__)
+
+# Allowlist of permitted Odoo models for search operations
+ALLOWED_MODELS = {
+    'res.users', 'res.partner', 'res.company',
+    'ir.module.module', 'ir.module.module.dependency',
+    'sale.order', 'purchase.order', 'account.move',
+    'stock.picking', 'product.product', 'product.template',
+}
 
 
 class OdooMCPTools:
@@ -44,19 +53,22 @@ class OdooMCPTools:
 
     async def list_modules(self) -> List[Dict[str, Any]]:
         """List all Odoo modules"""
-        try:
+        def _list_modules():
             odoo = self.connect()
             Module = odoo.env['ir.module.module']
             module_ids = Module.search([])
             modules = Module.read(module_ids, ['name', 'shortdesc', 'state', 'installed_version'])
             return modules
+
+        try:
+            return await asyncio.to_thread(_list_modules)
         except Exception as e:
             logger.error(f"Error listing modules: {e}")
             return []
 
     async def get_module_info(self, module_name: str) -> Dict[str, Any]:
         """Get detailed information about a module"""
-        try:
+        def _get_module_info():
             odoo = self.connect()
             Module = odoo.env['ir.module.module']
             module_ids = Module.search([('name', '=', module_name)])
@@ -64,44 +76,60 @@ class OdooMCPTools:
             if not module_ids:
                 return {"error": f"Module {module_name} not found"}
 
-            module = Module.read(module_ids[0], [
+            modules = Module.read(module_ids[0], [
                 'name', 'shortdesc', 'description', 'state',
                 'installed_version', 'author', 'website', 'license'
             ])
-            return module
+            # read() returns a list even for single ID
+            return modules[0] if isinstance(modules, list) else modules
+
+        try:
+            return await asyncio.to_thread(_get_module_info)
         except Exception as e:
             logger.error(f"Error getting module info: {e}")
             return {"error": str(e)}
 
     async def list_users(self) -> List[Dict[str, Any]]:
         """List all users"""
-        try:
+        def _list_users():
             odoo = self.connect()
             User = odoo.env['res.users']
             user_ids = User.search([])
             users = User.read(user_ids, ['name', 'login', 'email', 'active'])
             return users
+
+        try:
+            return await asyncio.to_thread(_list_users)
         except Exception as e:
             logger.error(f"Error listing users: {e}")
             return []
 
     async def get_user_details(self, user_id: int) -> Dict[str, Any]:
         """Get detailed user information"""
-        try:
+        def _get_user_details():
             odoo = self.connect()
             User = odoo.env['res.users']
-            user = User.read(user_id, [
+            users = User.read(user_id, [
                 'name', 'login', 'email', 'active', 'groups_id',
                 'company_id', 'partner_id', 'lang', 'tz'
             ])
-            return user
+            # read() returns a list even for single ID
+            return users[0] if isinstance(users, list) else users
+
+        try:
+            return await asyncio.to_thread(_get_user_details)
         except Exception as e:
             logger.error(f"Error getting user details: {e}")
             return {"error": str(e)}
 
     async def search_records(self, model: str, domain: List, fields: List[str] = None) -> List[Dict[str, Any]]:
         """Search records in a model"""
-        try:
+        # Validate model against allowlist
+        if model not in ALLOWED_MODELS:
+            logger.warning(f"Attempted access to non-allowed model: {model}")
+            return {"error": f"Model '{model}' is not in the allowed list"}
+
+        def _search_records():
             odoo = self.connect()
             Model = odoo.env[model]
             record_ids = Model.search(domain)
@@ -112,30 +140,16 @@ class OdooMCPTools:
                 records = Model.read(record_ids)
 
             return records
+
+        try:
+            return await asyncio.to_thread(_search_records)
         except Exception as e:
             logger.error(f"Error searching records: {e}")
             return []
 
-    async def execute_method(self, model: str, method: str, args: List = None, kwargs: Dict = None) -> Any:
-        """Execute a method on a model"""
-        try:
-            odoo = self.connect()
-            Model = odoo.env[model]
-
-            if args is None:
-                args = []
-            if kwargs is None:
-                kwargs = {}
-
-            result = getattr(Model, method)(*args, **kwargs)
-            return result
-        except Exception as e:
-            logger.error(f"Error executing method: {e}")
-            return {"error": str(e)}
-
     async def get_database_info(self) -> Dict[str, Any]:
         """Get database information"""
-        try:
+        def _get_database_info():
             odoo = self.connect()
             return {
                 "version": odoo.version,
@@ -143,13 +157,16 @@ class OdooMCPTools:
                 "host": self.host,
                 "port": self.port,
             }
+
+        try:
+            return await asyncio.to_thread(_get_database_info)
         except Exception as e:
             logger.error(f"Error getting database info: {e}")
             return {"error": str(e)}
 
     async def get_company_info(self) -> Dict[str, Any]:
         """Get company information"""
-        try:
+        def _get_company_info():
             odoo = self.connect()
             Company = odoo.env['res.company']
             company_ids = Company.search([])
@@ -159,13 +176,16 @@ class OdooMCPTools:
 
             companies = Company.read(company_ids, ['name', 'email', 'phone', 'website', 'currency_id'])
             return companies
+
+        try:
+            return await asyncio.to_thread(_get_company_info)
         except Exception as e:
             logger.error(f"Error getting company info: {e}")
             return {"error": str(e)}
 
     async def check_module_dependencies(self, module_name: str) -> Dict[str, Any]:
         """Check module dependencies"""
-        try:
+        def _check_dependencies():
             odoo = self.connect()
             Module = odoo.env['ir.module.module']
             Dependency = odoo.env['ir.module.module.dependency']
@@ -181,6 +201,9 @@ class OdooMCPTools:
                 "module": module_name,
                 "dependencies": dependencies
             }
+
+        try:
+            return await asyncio.to_thread(_check_dependencies)
         except Exception as e:
             logger.error(f"Error checking dependencies: {e}")
             return {"error": str(e)}
