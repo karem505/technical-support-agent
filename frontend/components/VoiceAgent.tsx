@@ -209,13 +209,13 @@ function VoiceAssistantUI() {
           {state === 'listening' && 'Listening...'}
           {state === 'thinking' && 'Processing...'}
           {state === 'speaking' && 'Speaking...'}
-          {state === 'idle' && 'Ready'}
+          {state !== 'listening' && state !== 'thinking' && state !== 'speaking' && 'Ready'}
         </p>
         <p className="text-sm text-gray-600 dark:text-gray-400">
           {state === 'listening' && 'I\'m listening to your question'}
           {state === 'thinking' && 'Analyzing and preparing response'}
           {state === 'speaking' && 'Agent is speaking'}
-          {state === 'idle' && 'Speak to ask a question'}
+          {state !== 'listening' && state !== 'thinking' && state !== 'speaking' && 'Speak to ask a question'}
         </p>
       </div>
 
