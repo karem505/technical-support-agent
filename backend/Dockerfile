@@ -22,5 +22,5 @@ COPY . .
 # Expose port
 EXPOSE 8000
 
-# Default command (can be overridden)
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Default command - uses PORT env var for Railway compatibility
+CMD uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000}
