@@ -13,7 +13,7 @@ AI-powered voice assistant for Odoo technical support using LiveKit (real-time v
 pip install -r requirements.txt           # Install dependencies
 python -m uvicorn api.main:app --reload --port 8000  # Start API server
 python -m agent.agent dev                  # Start voice agent (dev mode with hot reload)
-python -m agent.agent                      # Start voice agent (production)
+python -m agent.agent start               # Start voice agent (production mode)
 python -m mcp.server                       # Run MCP server (stdio mode)
 ```
 
@@ -28,7 +28,7 @@ pnpm format           # Prettier format
 
 ### Docker
 ```bash
-docker-compose up --build  # Run all services
+docker-compose up --build  # Run all services (backend, agent, frontend)
 ```
 
 ## Architecture
@@ -50,7 +50,7 @@ docker-compose up --build  # Run all services
 ### Frontend (`frontend/`)
 
 - **`app/page.tsx`**: Main page with VoiceAgent component
-- **`components/VoiceAgent.tsx`**: LiveKit room connection with `useVoiceAssistant` hook for state management (listening/thinking/speaking/idle), screen sharing via `localParticipant.setScreenShareEnabled()`
+- **`components/VoiceAgent.tsx`**: LiveKit room connection using `LiveKitRoom` component with `useVoiceAssistant` hook for state management (listening/thinking/speaking/idle). Screen sharing via `localParticipant.setScreenShareEnabled()`. Connection flow: create room → get token → connect to LiveKit
 
 ### Data Flow
 
@@ -78,8 +78,9 @@ async def your_tool(param: str) -> str:
         return result
     return await asyncio.to_thread(_sync_operation)
 ```
-2. Import and add to tools list in `OdooSupportAgent.__init__()` in `backend/agent/agent.py`
-3. Update Available Tools section in `backend/agent/prompts.py`
+2. Import the function at the top of `backend/agent/agent.py`
+3. Add to tools list in `OdooSupportAgent.__init__()`
+4. Update Available Tools section in `backend/agent/prompts.py`
 
 ### Adding MCP Tools
 1. Add method to `OdooMCPTools` in `backend/mcp/odoo_tools.py`
@@ -107,10 +108,20 @@ Voice agent uses `google.realtime.RealtimeModel` with:
 
 ## Environment Variables
 
-Required: `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `GOOGLE_API_KEY`
+**Required for LiveKit:**
+- `LIVEKIT_URL` - LiveKit server WebSocket URL (wss://...)
+- `LIVEKIT_API_KEY` - LiveKit API key
+- `LIVEKIT_API_SECRET` - LiveKit API secret
+- `GOOGLE_API_KEY` - Google API key for Gemini Live
 
-Odoo (required for tools): `ODOO_HOST`, `ODOO_PORT`, `ODOO_DB`, `ODOO_USERNAME`, `ODOO_PASSWORD`
+**Required for Odoo tools:**
+- `ODOO_HOST`, `ODOO_PORT`, `ODOO_DB`, `ODOO_USERNAME`, `ODOO_PASSWORD`
 
-Frontend: `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_LIVEKIT_URL`
+**Frontend (Next.js public env vars):**
+- `NEXT_PUBLIC_API_URL` - Backend API URL (http://localhost:8000)
+- `NEXT_PUBLIC_LIVEKIT_URL` - LiveKit server URL for client connection
 
-Optional: `CORS_ORIGINS` (comma-separated), `ODOO_LOG_FILE`, `PORT`, `MCP_SERVER_URL`, `MCP_SERVER_NAME`
+**Optional:**
+- `CORS_ORIGINS` - Comma-separated allowed origins (default: http://localhost:3000)
+- `ODOO_LOG_FILE` - Path to Odoo log file (default: /var/log/odoo/odoo-server.log)
+- `PORT` - API server port (default: 8000)
